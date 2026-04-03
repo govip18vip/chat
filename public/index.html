@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>🔒 GeekChat</title>
+<link rel="stylesheet" href="/css/app.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://js.puter.com/v2/"></script>
+</head>
+<body>
+
+<div class="privacy-lock" id="privacyLock"><div class="lock-icon">🔒</div><div class="lock-text">GeekChat · 安全锁定</div></div>
+
+<div class="app" id="app">
+  <div class="toast" id="toast"></div>
+
+  <!-- 来电 -->
+  <div class="incoming-overlay" id="incomingOverlay">
+    <div class="incoming-avatar" id="incomingAvatar">📞</div>
+    <div class="incoming-name" id="incomingName">来电</div>
+    <div class="incoming-type" id="incomingType">语音通话</div>
+    <div class="incoming-btns">
+      <div style="text-align:center"><div class="inc-btn reject" id="incReject">✕</div><div class="inc-label">拒绝</div></div>
+      <div style="text-align:center"><div class="inc-btn accept" id="incAccept">📞</div><div class="inc-label">接听</div></div>
+    </div>
+  </div>
+
+  <!-- 私聊面板 -->
+  <div class="pm-panel" id="pmPanel">
+    <div class="pm-header">
+      <div class="pm-back" onclick="closePM()">‹</div>
+      <div class="pm-title" id="pmTitle">私聊</div>
+      <div class="pm-call-btns">
+        <div class="pm-call-btn" onclick="initPrivateCall('audio')" title="私密语音">📞</div>
+        <div class="pm-call-btn" onclick="initPrivateCall('video')" title="私密视频">📹</div>
+      </div>
+    </div>
+    <div class="pm-notice">🔒 端对端加密 · 通话仅双方可见，群内不会显示</div>
+    <div class="pm-msgs" id="pmMsgs"></div>
+    <div class="pm-bar">
+      <input id="pmInput" placeholder="私聊消息…" autocomplete="off">
+      <div class="pm-send" onclick="sendPM()">➤</div>
+    </div>
+  </div>
+
+  <!-- 搜索面板 -->
+  <div class="search-panel" id="searchPanel">
+    <div class="search-header">
+      <div class="search-close" onclick="closeSearch()">‹</div>
+      <input id="searchInput" placeholder="搜索消息…" oninput="doSearch()">
+    </div>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <!-- 变声选择器 -->
+  <div class="effect-overlay" id="effectOverlay" onclick="if(event.target===this)closeEffectPicker()">
+    <div class="effect-picker">
+      <div class="effect-title">🎭 变声效果</div>
+      <div class="effect-grid">
+        <div class="effect-item" id="ef-none"  onclick="setEffect('none')"><div class="ef-icon">🎤</div><div class="ef-name">原声</div></div>
+        <div class="effect-item" id="ef-loli"  onclick="setEffect('loli')"><div class="ef-icon">🌸</div><div class="ef-name">萝莉音</div></div>
+        <div class="effect-item" id="ef-uncle" onclick="setEffect('uncle')"><div class="ef-icon">🎸</div><div class="ef-name">大叔音</div></div>
+        <div class="effect-item" id="ef-geek"  onclick="setEffect('geek')"><div class="ef-icon">🤖</div><div class="ef-name">极客音</div></div>
+        <div class="effect-item" id="ef-ghost" onclick="setEffect('ghost')"><div class="ef-icon">👻</div><div class="ef-name">幽灵音</div></div>
+        <div class="effect-item" id="ef-cave"  onclick="setEffect('cave')"><div class="ef-icon">🏔</div><div class="ef-name">山洞音</div></div>
+      </div>
+      <div class="effect-close" onclick="closeEffectPicker()">完成</div>
+    </div>
+  </div>
+
+  <!-- 二维码弹窗 -->
+  <div class="qr-overlay" id="qrOverlay" onclick="if(event.target===this)closeQR()">
+    <div class="qr-modal">
+      <div class="qr-title">📲 扫码加入聊天</div>
+      <div class="qr-desc">扫描二维码，密钥自动填入，无需手动输入</div>
+      <div class="qr-box" id="qrBox"></div>
+      <div class="qr-key" id="qrKeyDisplay"></div>
+      <div class="qr-btns">
+        <div class="qr-btn" onclick="copyQRLink()">📋 复制链接</div>
+        <div class="qr-btn secondary" onclick="closeQR()">关闭</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 定时选择器 -->
+  <div class="sched-overlay" id="schedOverlay" onclick="if(event.target===this)closeSchedPicker()">
+    <div class="sched-picker">
+      <div class="sched-title">⏱ 定时发送</div>
+      <div class="sched-opts">
+        <div class="sched-opt" onclick="setSched(1)">1 分钟后</div>
+        <div class="sched-opt" onclick="setSched(5)">5 分钟后</div>
+        <div class="sched-opt" onclick="setSched(10)">10 分钟后</div>
+        <div class="sched-opt" onclick="setSched(30)">30 分钟后</div>
+        <div class="sched-opt" onclick="setSched(60)">1 小时后</div>
+      </div>
+      <div class="sched-cancel-btn" onclick="closeSchedPicker()">取消</div>
+    </div>
+  </div>
+
+  <!-- 表情回应 -->
+  <div class="reaction-picker" id="reactionPicker">
+    <span onclick="sendReaction('👍')">👍</span>
+    <span onclick="sendReaction('❤️')">❤️</span>
+    <span onclick="sendReaction('😂')">😂</span>
+    <span onclick="sendReaction('😮')">😮</span>
+    <span onclick="sendReaction('😢')">😢</span>
+    <span onclick="sendReaction('🔥')">🔥</span>
+  </div>
+
+  <!-- 图片/视频查看 -->
+  <div class="lb" id="lb">
+    <div class="lb-close" onclick="closeLB()">✕</div>
+    <img id="lbImg" style="display:none" alt="">
+    <video id="lbVid" style="display:none" controls playsinline></video>
+    <div class="lb-dl" onclick="downloadLB()">💾 保存</div>
+  </div>
+
+  <!-- AI 助手面板 -->
+  <div class="ai-overlay" id="aiOverlay" onclick="if(event.target===this)closeAIPanel()">
+    <div class="ai-panel">
+      <div class="ai-panel-header">
+        <div class="ai-panel-icon">🤖</div>
+        <div>
+          <div class="ai-panel-title">AI 助手</div>
+          <div class="ai-panel-sub">GPT-4o · 本地处理，不存储对话</div>
+        </div>
+      </div>
+      <div class="ai-ctx-box" id="aiCtxBox">
+        <div class="ai-ctx-label">📌 引用消息</div>
+        <div class="ai-ctx-text" id="aiCtxText"></div>
+        <div class="ai-ctx-clear" onclick="clearAICtx()">✕</div>
+      </div>
+      <div class="ai-actions-grid">
+        <div class="ai-act" onclick="doAIAction('translate_zh')"><span>🇨🇳</span><small>译为中文</small></div>
+        <div class="ai-act" onclick="doAIAction('translate_en')"><span>🇺🇸</span><small>译为英文</small></div>
+        <div class="ai-act" onclick="doAIAction('summarize')"><span>📝</span><small>总结内容</small></div>
+        <div class="ai-act" onclick="doAIAction('explain')"><span>💡</span><small>详细解释</small></div>
+        <div class="ai-act" onclick="doAIAction('reply')"><span>✍️</span><small>建议回复</small></div>
+        <div class="ai-act" onclick="doAIAction('polish')"><span>✨</span><small>润色文字</small></div>
+        <div class="ai-act" onclick="doAIAction('sentiment')"><span>❤️</span><small>情感分析</small></div>
+        <div class="ai-act" onclick="doAIAction('code')"><span>💻</span><small>解释代码</small></div>
+      </div>
+      <div class="ai-divider"><span>或输入自定义问题</span></div>
+      <div class="ai-custom-bar">
+        <input id="aiCustomInput" placeholder="问任何问题…" autocomplete="off">
+        <div class="ai-custom-send" onclick="doAICustom()">➤</div>
+      </div>
+      <div class="ai-panel-close" onclick="closeAIPanel()">关闭</div>
+    </div>
+  </div>
+
+  <!-- ═══ 登录页 ═══ -->
+  <div id="sLogin" class="screen active">
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-logo">
+          <div class="logo-icon">🔐</div>
+          <h1>GEEK · CHAT</h1>
+          <p>AES-256 · PBKDF2 · WebRTC · E2E · AI</p>
+        </div>
+        <div class="input-group">
+          <label>昵称</label>
+          <input id="iNick" placeholder="你叫什么？" maxlength="12" autocomplete="nickname">
+        </div>
+        <div class="input-group">
+          <label>
+            <span>AES-256 房间密钥</span>
+            <span class="gen-btn" onclick="generateKey()">⚡ 随机生成</span>
+          </label>
+          <div class="pwd-wrap">
+            <input type="password" id="iKey" placeholder="双方保持一致" autocomplete="current-password">
+            <button class="eye-btn" onclick="togglePwd()">👁</button>
+          </div>
+          <div class="pwd-bar" id="pwdBar"></div>
+        </div>
+
+        <div class="share-box" id="shareBox">
+          <div class="share-key" id="shareKey" onclick="copyKey()"></div>
+          <div class="share-hint">🔑 已复制 · 发给对方即可安全连线</div>
+          <div class="share-actions">
+            <div class="share-action-btn" onclick="copyKey()">📋 复制密钥</div>
+            <div class="share-action-btn" onclick="copyQRLinkLogin()">🔗 复制链接</div>
+            <div class="share-action-btn qr-ab" onclick="showQRLogin()">📲 二维码</div>
+          </div>
+        </div>
+
+        <button class="btn-join" id="btnJoin" onclick="joinRoom()">[ 安全连线 ]</button>
+        <div id="connStatus"></div>
+        <div class="badges">
+          <span class="badge">🔒 E2E</span>
+          <span class="badge">👁 一次阅读</span>
+          <span class="badge">🎭 变声</span>
+          <span class="badge">📲 二维码</span>
+          <span class="badge">💬 私聊</span>
+          <span class="badge" style="color:var(--blue);border-color:rgba(79,195,247,.3)">🤖 AI</span>
+          <span class="badge" style="color:var(--orange);border-color:rgba(255,183,77,.3)">🎲 骰子</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 聊天页 ═══ -->
+  <div id="sChat" class="screen">
+    <div class="offline-bar" id="offlineBar">⚠ 重连中…</div>
+    <div class="header">
+      <div class="hdr-info">
+        <h2 id="roomTitle">🔒 聊天室</h2>
+        <div class="hdr-sub" id="hdrSub">连接中…</div>
+      </div>
+      <div class="net-ind" id="netInd">
+        <div class="nb" style="height:4px"></div>
+        <div class="nb" style="height:8px"></div>
+        <div class="nb" style="height:12px"></div>
+        <div class="nb" style="height:16px"></div>
+      </div>
+      <div class="hbtn" onclick="openSearch()">🔍</div>
+      <div class="hbtn" onclick="showQRInRoom()">📲</div>
+      <div class="hbtn" onclick="openSheet('settings')">⚙</div>
+      <div class="hbtn" onclick="openSheet('members')">👥<span class="mbadge" id="onlineCnt">1</span></div>
+      <div class="hbtn red" onclick="exitRoom()">✕</div>
+    </div>
+
+    <div class="call-bar" id="callBar" onclick="maximizeCall()">
+      <div class="cb-dot"></div>
+      <div id="callBarText">通话中</div>
+      <span>⬆</span>
+    </div>
+
+    <div class="ad-bar" id="adBar">🔥 阅后即焚：<span id="adBarText"></span></div>
+    <div class="msgs" id="msgBox"><div class="sys-msg">🔒 AES-256 端对端加密 · 输入 <strong>@ai</strong> 使用AI助手</div></div>
+
+    <div class="reply-bar" id="replyBar">
+      <div class="rb-content"><div class="rb-name" id="rbName">回复</div><div class="rb-text" id="rbText"></div></div>
+      <div class="rb-close" onclick="clearReply()">✕</div>
+    </div>
+    <div class="prev-bar" id="prevBar"></div>
+    <div class="sched-bar" id="schedBar" style="display:none">
+      <span>⏱ 定时：<span id="schedLabel"></span></span>
+      <span class="sched-cancel" onclick="cancelSched()">✕</span>
+    </div>
+
+    <div class="input-area">
+      <div class="cbtn" id="voiceToggle" onclick="toggleVoiceMode()">🎤</div>
+      <div class="inp-wrap">
+        <input id="iMsg" placeholder="加密消息… (@ai 问AI)" autocomplete="off">
+        <button id="holdBtn" class="hold-btn">按住 说话</button>
+      </div>
+      <div class="cbtn" onclick="toggleEmoji()">😊</div>
+      <div class="cbtn" onclick="toggleAttach()">＋</div>
+      <div class="cbtn send disabled" id="btnSend" onclick="sendMsg()">➤</div>
+    </div>
+    <div class="emoji-panel" id="emojiPanel"></div>
+    <div class="attach-panel" id="attachPanel">
+      <div class="att" onclick="pickFile('image/*')"><div class="att-ic" style="background:rgba(0,230,118,.12)">🖼️</div><span>照片</span></div>
+      <div class="att" onclick="pickFile('video/*')"><div class="att-ic" style="background:rgba(79,195,247,.12)">📹</div><span>视频</span></div>
+      <div class="att" onclick="pickFile('*/*')"><div class="att-ic" style="background:rgba(255,183,77,.12)">📎</div><span>文件</span></div>
+      <div class="att" onclick="initCall('audio')"><div class="att-ic" style="background:rgba(16,185,129,.12)">📞</div><span>群语音</span></div>
+      <div class="att" onclick="initCall('video')"><div class="att-ic" style="background:rgba(139,92,246,.12)">🎥</div><span>群视频</span></div>
+      <div class="att" onclick="openSchedPicker()"><div class="att-ic" style="background:rgba(79,195,247,.12)">⏱</div><span>定时</span></div>
+      <div class="att" onclick="openSheet('settings')"><div class="att-ic" style="background:rgba(255,68,68,.12)">🔥</div><span>阅后即焚</span></div>
+      <div class="att" onclick="openEffectPicker()"><div class="att-ic" id="efIc" style="background:rgba(187,134,252,.12)">🎭</div><span id="efTxt">变声</span></div>
+      <div class="att" onclick="openAIPanel(null)"><div class="att-ic" style="background:rgba(79,195,247,.08);border:1px solid rgba(79,195,247,.25)">🤖</div><span style="color:var(--blue)">AI助手</span></div>
+      <!-- ★ 骰子按钮 -->
+      <div class="att" onclick="rollDice()"><div class="att-ic" style="background:rgba(255,183,77,.1);border:1px solid rgba(255,183,77,.28)">🎲</div><span style="color:var(--orange)">骰子</span></div>
+    </div>
+    <input type="file" id="fileIn" style="display:none">
+  </div>
+
+  <!-- ═══ 通话页 ═══ -->
+  <div id="sCall" class="call-screen">
+    <div class="call-hdr">
+      <div class="call-enc">🔒 <span id="callPrivateTag">加密通话</span></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="call-quality" id="callQuality"></span>
+        <span class="call-state" id="callState"></span>
+        <span class="call-cnt" id="callCnt"></span>
+        <span style="color:#fff;font-family:var(--fm);font-size:14px" id="callTimer">00:00</span>
+      </div>
+    </div>
+    <div class="call-waiting" id="callWaiting"><div class="wait-ring">📞</div><div class="wait-text" id="waitText">等待接听…</div></div>
+    <div class="audio-bg" id="audioBg"><div class="audio-parts" id="audioParts"></div></div>
+    <div class="vgrid" id="remoteVids" data-c="0"></div>
+    <div class="mini-ov"><span id="miniTimer">通话中</span></div>
+    <div class="mini-audio-ic">📞</div>
+    <div class="pip" id="localPip">
+      <video id="localVid" autoplay playsinline muted></video>
+      <div class="pip-lbl" id="pipLbl">我</div>
+    </div>
+    <div class="call-ctrl">
+      <div class="cc" id="ccMic" onclick="toggleMic()">🎤</div>
+      <div class="cc mini" onclick="minimizeCall()">⬇</div>
+      <div class="cc hangup" onclick="hangupCall()">📞</div>
+      <div class="cc" id="ccCam" onclick="toggleCam()">📹</div>
+      <div class="cc" onclick="flipCamera()" style="font-size:15px">🔄</div>
+    </div>
+  </div>
+
+  <!-- 录音 UI -->
+  <div class="rec-ui" id="recUI">
+    <div class="rec-icon" id="recIcon">🎤</div>
+    <div class="rec-dur" id="recDur">0:00</div>
+    <div class="rec-tip" id="recTip">上滑取消</div>
+    <div class="rec-effect-label" id="recEffectLabel"></div>
+  </div>
+
+  <!-- 设置/成员弹层 -->
+  <div class="sheet-ov" id="sheetOv" onclick="closeSheet()"></div>
+
+  <div class="sheet" id="sheetSettings">
+    <div class="sheet-handle"></div>
+    <h3>⚙ 聊天设置</h3>
+    <p>阅后即焚：消息发出后对方看完自动销毁</p>
+    <div class="seg" id="segAD">
+      <button class="on" data-v="0">关闭</button>
+      <button data-v="10">10s</button>
+      <button data-v="30">30s</button>
+      <button data-v="60">1min</button>
+      <button data-v="300">5min</button>
+    </div>
+    <button class="sheet-btn" onclick="saveSettings()">[ 保存 ]</button>
+    <div class="sheet-sec">
+      <h4>🛡 隐私保护</h4>
+      <div class="stoggle">
+        <div><div class="stl">👁 偷窥保护（一次性阅读）</div><div class="std">所有发出的消息需点击才能查看，阅后消失</div></div>
+        <div class="sw" id="togOnceRead" onclick="toggleOnceRead()"></div>
+      </div>
+      <div class="stoggle">
+        <div><div class="stl">退出自动清除</div><div class="std">离开时删除本地记录</div></div>
+        <div class="sw" id="togAutoClear" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="stoggle">
+        <div><div class="stl">禁止复制</div><div class="std">阻止选中消息文字</div></div>
+        <div class="sw" id="togNoCopy" onclick="toggleNoCopy()"></div>
+      </div>
+      <div class="stoggle">
+        <div><div class="stl">隐私锁屏</div><div class="std">切换应用时自动锁定</div></div>
+        <div class="sw on" id="togPL" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="stoggle">
+        <div><div class="stl">桌面通知</div><div class="std">新消息浏览器提醒</div></div>
+        <div class="sw" id="togNotif" onclick="toggleNotif()"></div>
+      </div>
+    </div>
+    <div class="sheet-sec">
+      <h4>🗑 数据管理</h4>
+      <button class="sheet-btn danger" onclick="confirmClearLocal()">🗑 清空本地记录</button>
+      <button class="sheet-btn warn" onclick="confirmClearRemote()">📡 远程擦除对方</button>
+      <button class="sheet-btn danger" onclick="confirmClearBoth()">💣 双方全部清除</button>
+    </div>
+    <div class="sheet-sec">
+      <h4>ℹ️ 安全信息</h4>
+      <p id="secInfo" style="font-family:var(--fm);font-size:10px;word-break:break-all;color:#444;line-height:1.8"></p>
+    </div>
+  </div>
+
+  <div class="sheet" id="sheetMembers">
+    <div class="sheet-handle"></div>
+    <h3>👥 在线成员</h3>
+    <p style="font-size:11px;color:var(--muted)">点击私聊 · 私密通话仅双方可见</p>
+    <div id="memberList" style="margin-top:14px"></div>
+  </div>
+
+  <div class="pwa-bar" id="pwaBanner">
+    <span style="font-size:22px">📱</span>
+    <div style="flex:1;font-size:12px"><strong style="display:block">添加到主屏幕</strong><span style="color:var(--muted)">全屏体验</span></div>
+    <div class="pwa-btn" onclick="installPWA()">安装</div>
+    <div class="pwa-close" onclick="$('pwaBanner').classList.remove('show')">✕</div>
+  </div>
+</div>
+
+<script src="/js/crypto.js"></script>
+<script src="/js/chat.js"></script>
+</body>
+</html>

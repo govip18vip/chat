@@ -13,9 +13,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GeekChat - AES-256 Encrypted Messaging",
+  title: "JikeChat - AES-256 Encrypted Messaging",
   description:
-    "End-to-end encrypted chat with WebRTC calls, AI assistant, and zero-knowledge architecture.",
+    "Enterprise-grade end-to-end encrypted chat with WebRTC calls, AI assistant, and zero-knowledge architecture.",
   keywords: ["encrypted chat", "E2E encryption", "AES-256", "WebRTC", "secure messaging"],
   manifest: "/manifest.json",
 };

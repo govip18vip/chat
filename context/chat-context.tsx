@@ -332,26 +332,45 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Send encrypted message via POST API
+  /* ── Dual-mode: WebSocket (NEXT_PUBLIC_WS_URL) or SSE fallback ── */
+  const modeRef = useRef<"ws" | "sse">(
+    typeof window !== "undefined" && process.env.NEXT_PUBLIC_WS_URL ? "ws" : "sse"
+  );
+
+  // Send encrypted message - auto-selects WS or POST
   const sendEncrypted = useCallback(
     async (obj: Record<string, unknown>) => {
       const s = stateRef.current;
       if (!s.connected || !s.derivedKey || !clientIdRef.current) return;
-      
+
       const encrypted = encrypt(obj, s.derivedKey);
-      
-      try {
-        await fetch("/api/room", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            roomId: s.roomHash,
-            clientId: clientIdRef.current,
-            data: encrypted,
-          }),
-        });
-      } catch (err) {
-        console.error("Failed to send message:", err);
+
+      if (
+        modeRef.current === "ws" &&
+        wsRef.current &&
+        wsRef.current.readyState === WebSocket.OPEN
+      ) {
+        // WebSocket mode: send directly
+        try {
+          wsRef.current.send(encrypted);
+        } catch (err) {
+          console.error("WS send failed:", err);
+        }
+      } else {
+        // SSE mode: POST to API route
+        try {
+          await fetch("/api/room", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomId: s.roomHash,
+              clientId: clientIdRef.current,
+              data: encrypted,
+            }),
+          });
+        } catch (err) {
+          console.error("POST send failed:", err);
+        }
       }
     },
     []
@@ -518,9 +537,97 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [sysMsg]
   );
 
+  /* ── Shared: after connect success ── */
+  const onConnected = useCallback(
+    async (derivedKeyVal: string, roomHashVal: string) => {
+      reconCount.current = 0;
+      clearTimeout(reconTimer.current);
+      dispatch({ type: "SET_SCREEN", screen: "chat" });
+
+      await initDB(roomHashVal);
+      const history = await loadHistory(derivedKeyVal);
+      if (history.length > 0) {
+        const histMsgs: ChatMessage[] = history.map((m) => ({
+          id: m.id,
+          type: "chat",
+          nick: m.nick,
+          text: m.text,
+          file: m.file as FilePayload | undefined,
+          dice: m.dice as number | undefined,
+          ad: 0,
+          once: false,
+          ts: m.ts,
+          isMe: !!(m as Record<string, unknown>)._isMe,
+          replyTo: m.replyTo as ChatMessage["replyTo"],
+        }));
+        dispatch({ type: "ADD_MESSAGES", messages: histMsgs });
+        sysMsg(`已加载 ${history.length} 条历史`);
+      }
+      sysMsg("已加入加密聊天室 -- 输入 @ai 使用AI助手");
+    },
+    [sysMsg]
+  );
+
+  const scheduleReconnect = useCallback(
+    (derivedKeyVal: string, myNickVal: string, roomHashVal: string) => {
+      if (stateRef.current.screen !== "chat") return;
+      const n = reconCount.current;
+      if (n >= 15) return;
+      const delay = Math.min(1000 * Math.pow(1.5, n), 30000);
+      reconCount.current = n + 1;
+      reconTimer.current = setTimeout(() => {
+        connect(derivedKeyVal, myNickVal, roomHashVal);
+      }, delay);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  /* ── WebSocket connect (when NEXT_PUBLIC_WS_URL is set) ── */
+  const connectWS = useCallback(
+    (derivedKeyVal: string, myNickVal: string, roomHashVal: string) => {
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+
+      const base = process.env.NEXT_PUBLIC_WS_URL!;
+      const wsUrl = `${base}?r=${roomHashVal}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        onConnected(derivedKeyVal, roomHashVal);
+        // Ping keepalive
+        clearInterval(pingInterval.current);
+        pingInterval.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ _ping: Date.now() })); } catch {}
+          }
+        }, 20000);
+      };
+
+      ws.onmessage = (e) => {
+        const raw = typeof e.data === "string" ? e.data : "";
+        // The WS server wraps messages in {_data, _from} or {_sys}
+        handleSSEMessage(raw);
+      };
+
+      ws.onerror = () => {};
+
+      ws.onclose = () => {
+        clearInterval(pingInterval.current);
+        dispatch({ type: "SET_DISCONNECTED" });
+        scheduleReconnect(derivedKeyVal, myNickVal, roomHashVal);
+      };
+    },
+    [handleSSEMessage, onConnected, scheduleReconnect]
+  );
+
+  /* ── SSE connect (Vercel serverless fallback) ── */
   const connectSSE = useCallback(
-    async (derivedKeyVal: string, myNickVal: string, roomHashVal: string) => {
-      // Close existing connection
+    (derivedKeyVal: string, myNickVal: string, roomHashVal: string) => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -535,11 +642,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       };
 
       es.onopen = async () => {
-        reconCount.current = 0;
-        clearTimeout(reconTimer.current);
-        dispatch({ type: "SET_SCREEN", screen: "chat" });
-        
-        // Setup ping interval
+        await onConnected(derivedKeyVal, roomHashVal);
+        // SSE ping via POST
         clearInterval(pingInterval.current);
         pingInterval.current = setInterval(() => {
           if (stateRef.current.connected && clientIdRef.current) {
@@ -554,47 +658,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             }).catch(() => {});
           }
         }, 20000);
-
-        // Init DB and load history
-        await initDB(roomHashVal);
-        const history = await loadHistory(derivedKeyVal);
-        if (history.length > 0) {
-          const histMsgs: ChatMessage[] = history.map((m) => ({
-            id: m.id,
-            type: "chat",
-            nick: m.nick,
-            text: m.text,
-            file: m.file as FilePayload | undefined,
-            dice: m.dice as number | undefined,
-            ad: 0,
-            once: false,
-            ts: m.ts,
-            isMe: !!(m as Record<string, unknown>)._isMe,
-            replyTo: m.replyTo as ChatMessage["replyTo"],
-          }));
-          dispatch({ type: "ADD_MESSAGES", messages: histMsgs });
-          sysMsg(`已加载 ${history.length} 条历史`);
-        }
-        sysMsg("已加入加密聊天室 -- 输入 @ai 使用AI助手");
       };
 
       es.onerror = () => {
         clearInterval(pingInterval.current);
         dispatch({ type: "SET_DISCONNECTED" });
-        if (stateRef.current.screen === "chat") {
-          const n = reconCount.current;
-          if (n >= 15) return;
-          const delay = Math.min(1000 * Math.pow(1.5, n), 30000);
-          reconCount.current = n + 1;
-          reconTimer.current = setTimeout(() => {
-            if (!eventSourceRef.current || eventSourceRef.current.readyState !== EventSource.OPEN) {
-              connectSSE(derivedKeyVal, myNickVal, roomHashVal);
-            }
-          }, delay);
-        }
+        scheduleReconnect(derivedKeyVal, myNickVal, roomHashVal);
       };
     },
-    [handleSSEMessage, sysMsg]
+    [handleSSEMessage, onConnected, scheduleReconnect]
+  );
+
+  /* ── Unified connect entry point ── */
+  const connect = useCallback(
+    (derivedKeyVal: string, myNickVal: string, roomHashVal: string) => {
+      if (modeRef.current === "ws") {
+        connectWS(derivedKeyVal, myNickVal, roomHashVal);
+      } else {
+        connectSSE(derivedKeyVal, myNickVal, roomHashVal);
+      }
+    },
+    [connectWS, connectSSE]
   );
 
   const joinRoom = useCallback(
@@ -614,9 +698,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       });
       dispatch({ type: "SET_CONNECTING", connecting: true });
       // Use setTimeout to ensure state is updated before connecting
-      setTimeout(() => connectSSE(dk, cleanNick, rh), 0);
+      setTimeout(() => connect(dk, cleanNick, rh), 0);
     },
-    [connectSSE]
+    [connect]
   );
 
   const exitRoom = useCallback(() => {
