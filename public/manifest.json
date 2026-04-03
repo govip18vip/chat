@@ -1,0 +1,24 @@
+{
+  "name": "GeekChat - 加密聊天",
+  "short_name": "GeekChat",
+  "description": "AES-256 端对端加密聊天，WebRTC 通话，AI 助手",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#10b981",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
