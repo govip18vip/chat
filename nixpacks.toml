@@ -1,0 +1,19 @@
+# Railway 若仍使用 Nixpacks：禁止 Next 提供方（否则会生成第二段 npm ci + node_modules/.cache 挂载 → EBUSY）
+# 仅用 Node；与 Dockerfile 方案可同时存在（走 Docker 构建时本文件不参与）
+# 参考: https://nixpacks.com/docs/configuration/file
+
+providers = ["node"]
+
+[variables]
+NIXPACKS_NODE_VERSION = "22"
+NODE_ENV = "production"
+
+[phases.install]
+cmds = ["npm ci --omit=dev"]
+
+# 不执行 next build / 不再跑第二次 npm ci
+[phases.build]
+cmds = []
+
+[start]
+cmd = "node server.js"

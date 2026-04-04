@@ -1,5 +1,9 @@
 # WebSocket 聊天信令服务（server.js）— 与 Vercel 上的 Next 前端配合使用。
-# 使用 Dockerfile 构建：避免 Nixpacks 识别 Next 后二次 npm ci 与 /app/node_modules/.cache 缓存挂载冲突（EBUSY）。
+#
+# 优先 Docker 构建（无 Nixpacks 二次 npm ci）。若控制台仍显示 Nixpacks：
+#   Railway 服务 → Settings → Build → Builder 选「Dockerfile」并保存，再 Redeploy。
+# 若只能 Nixpacks：根目录 nixpacks.toml 已禁用 Next 提供方，避免 .cache 挂载冲突。
+#
 # 文档: https://docs.railway.app/develop/cli/reference#configuration-as-code
 
 [build]
