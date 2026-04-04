@@ -1,5 +1,9 @@
 /.next
 /node_modules
 
+# 勿提交：Railway/Nixpacks 会把缓存挂载到此路径，必须是「不存在」或由挂载创建为目录
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
 .vercel
 .env*.local
