@@ -23,7 +23,7 @@ export const MAX_FILE_SIZE = 15 * 1024 * 1024;
 export const ICE_TIMEOUT = 15000;
 export const ICE_MAX_RESTART = 3;
 export const PBKDF2_ITERATIONS = 10000;
-export const AI_API_URL = "https://text.pollinations.ai/openai";
+export const AI_API_URL = "https://backendai.internxt.com/";
 
 export const VOICE_EFFECTS = {
   none: { icon: "Mic", name: "原声" },

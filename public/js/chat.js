@@ -16,7 +16,7 @@ const RTC_CFG = {
 const MAX_FILE = 15*1024*1024;
 const ICE_TO   = 15000;
 const ICE_MAX  = 3;
-const AI_API   = 'https://text.pollinations.ai/openai';
+const AI_API   = 'https://backendai.internxt.com/';
 
 /* ─── State ─── */
 let ws=null, roomKey='', derivedKey='', myNick='', myId='', roomHash='';
@@ -324,34 +324,34 @@ const AI_ACTIONS = {
 };
 
 async function callAI(userPrompt) {
-  const SYS = '你是一个高效的AI助手，集成在加密聊天软件GeekChat中。请简洁、准确地回答用户的问题。用户发的消息可能是多种语言，请根据上下文用合适语言回复，通常优先中文。';
-
-  if (typeof puter !== 'undefined' && puter?.ai?.chat) {
-    try {
-      const msgs = [
-        { role: 'system', content: SYS },
-        { role: 'user', content: userPrompt }
-      ];
-      const resp = await puter.ai.chat(msgs, { model: 'gpt-4o-mini' });
-      if (typeof resp === 'string' && resp) return resp;
-      const c = resp?.message?.content ?? resp?.content ?? '';
-      if (c) return c;
-    } catch(e) {
-      console.warn('[AI] Puter failed:', e.message);
-    }
-  }
+  const SYS = '你是一个专业、友好的AI助手。请使用中文回答问题，代码要有详细注释。';
 
   const resp = await fetch(AI_API, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'accept': '*/*',
+      'accept-language': 'en,zh-CN;q=0.9,zh;q=0.8,zh-TW;q=0.7',
+      'content-type': 'application/json',
+      'dnt': '1',
+      'origin': 'https://7e6a3fe3.pinit.eth.limo',
+      'priority': 'u=1, i',
+      'referer': 'https://7e6a3fe3.pinit.eth.limo/',
+      'sec-ch-ua': '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'cross-site',
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
+    },
     body: JSON.stringify({
       messages: [
         { role: 'system', content: SYS },
         { role: 'user', content: userPrompt }
       ],
-      model: 'openai',
-      private: true,
-      seed: Math.floor(Math.random() * 9999)
+      model: 'gpt-4o',
+      temperature: 0.7,
+      max_tokens: 4096
     })
   });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
