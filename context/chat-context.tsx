@@ -16,6 +16,7 @@ import {
   getRoomHash,
   getSalt,
 } from "@/lib/crypto";
+import type { GroupCallBridge } from "@/lib/group-call-bridge";
 import {
   initDB,
   saveMsg as dbSave,
@@ -300,6 +301,9 @@ interface ChatContextType {
   sendDice: () => void;
   sysMsg: (text: string) => void;
   callAI: (prompt: string) => Promise<string>;
+  registerGroupCallBridge: (bridge: GroupCallBridge | null) => void;
+  startGroupCall: (type: "audio" | "video") => void;
+  startGroupCallImplRef: React.MutableRefObject<((type: "audio" | "video") => void) | null>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -313,6 +317,14 @@ export function useChatContext() {
 /* ────────── Provider ────────── */
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const groupCallBridgeRef = useRef<GroupCallBridge | null>(null);
+  const startGroupCallImplRef = useRef<((type: "audio" | "video") => void) | null>(null);
+  const registerGroupCallBridge = useCallback((bridge: GroupCallBridge | null) => {
+    groupCallBridgeRef.current = bridge;
+  }, []);
+  const startGroupCall = useCallback((type: "audio" | "video") => {
+    void startGroupCallImplRef.current?.(type);
+  }, []);
   const wsRef = useRef<WebSocket | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const clientIdRef = useRef<string>("");
@@ -412,6 +424,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             sysMsg(`${s.members[leftId]} 已离开`);
           }
           dispatch({ type: "REMOVE_MEMBER", id: leftId });
+          groupCallBridgeRef.current?.onPeerLeft(leftId);
         }
         if (sys === "offline_done") {
           sysMsg(`${env.count} 条离线消息`);
@@ -447,6 +460,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                     data: syncMsg,
                   }),
                 }).catch(() => {});
+                groupCallBridgeRef.current?.onMemberJoined(sid);
               }
             }
             break;
@@ -525,12 +539,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             dispatch({ type: "REMOVE_MESSAGE", id: p.msgId as string });
             dbDelete(p.msgId as string);
             break;
-          case "call_invite":
-          case "call_accept":
-          case "call_decline":
-          case "webrtc":
-            // WebRTC handled by useWebRTC hook
+          case "call_invite": {
+            const privateTo = p.privateTo as string | undefined;
+            if (privateTo && privateTo !== clientIdRef.current) break;
+            groupCallBridgeRef.current?.onCallInvite(sid, p);
             break;
+          }
+          case "call_accept":
+            groupCallBridgeRef.current?.onCallAccept(sid, p);
+            break;
+          case "call_decline":
+            groupCallBridgeRef.current?.onCallDecline(sid);
+            break;
+          case "webrtc": {
+            const target = p.target as string | undefined;
+            if (target && target !== clientIdRef.current) break;
+            groupCallBridgeRef.current?.onWebRTC(sid, p);
+            break;
+          }
         }
       }
     },
@@ -704,6 +730,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const exitRoom = useCallback(() => {
+    groupCallBridgeRef.current?.reset();
     clearTimeout(reconTimer.current);
     clearInterval(pingInterval.current);
     clearTimeout(typingTimer.current);
@@ -856,6 +883,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         sendDice,
         sysMsg,
         callAI,
+        registerGroupCallBridge,
+        startGroupCall,
+        startGroupCallImplRef,
       }}
     >
       {children}

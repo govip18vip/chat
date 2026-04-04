@@ -4,6 +4,7 @@ import { ChatProvider, useChatContext } from "@/context/chat-context";
 import { LoginScreen } from "@/components/chat/login-screen";
 import { ChatScreen } from "@/components/chat/chat-screen";
 import { PrivacyLock } from "@/components/chat/privacy-lock";
+import { GroupCallManager } from "@/components/call/group-call-manager";
 
 function AppContent() {
   const { state } = useChatContext();
@@ -20,6 +21,7 @@ function AppContent() {
 export default function HomePage() {
   return (
     <ChatProvider>
+      <GroupCallManager />
       <AppContent />
     </ChatProvider>
   );

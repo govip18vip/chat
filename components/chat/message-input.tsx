@@ -26,7 +26,8 @@ import { cn, formatSize } from "@/lib/utils";
 import { EMOJI_CATEGORIES, type VoiceEffectKey } from "@/lib/constants";
 
 export function MessageInput() {
-  const { state, dispatch, sendMessage, sendDice, sendEncrypted, callAI, sysMsg } = useChatContext();
+  const { state, dispatch, sendMessage, sendDice, sendEncrypted, callAI, sysMsg, startGroupCall } =
+    useChatContext();
   const [text, setText] = useState("");
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [activeEmojiTab, setActiveEmojiTab] = useState(0);
@@ -414,8 +415,24 @@ export function MessageInput() {
             { icon: ImageIcon, label: "照片", color: "bg-primary/10 text-primary", action: () => handleFileSelect("image/*") },
             { icon: Video, label: "视频", color: "bg-ai/10 text-ai", action: () => handleFileSelect("video/*") },
             { icon: Paperclip, label: "文件", color: "bg-orange/10 text-orange", action: () => handleFileSelect("*/*") },
-            { icon: Phone, label: "群语音", color: "bg-primary/10 text-primary", action: () => sysMsg("请部署WebSocket服务器后使用通话功能") },
-            { icon: VideoIcon, label: "群视频", color: "bg-purple/10 text-purple", action: () => sysMsg("请部署WebSocket服务器后使用通话功能") },
+            {
+              icon: Phone,
+              label: "群语音",
+              color: "bg-primary/10 text-primary",
+              action: () => {
+                dispatch({ type: "CLOSE_PANELS" });
+                startGroupCall("audio");
+              },
+            },
+            {
+              icon: VideoIcon,
+              label: "群视频",
+              color: "bg-purple/10 text-purple",
+              action: () => {
+                dispatch({ type: "CLOSE_PANELS" });
+                startGroupCall("video");
+              },
+            },
             { icon: Clock, label: "定时", color: "bg-ai/10 text-ai", action: () => dispatch({ type: "SET_ACTIVE_PANEL", panel: "schedule" }) },
             { icon: Flame, label: "阅后即焚", color: "bg-destructive/10 text-destructive", action: () => dispatch({ type: "SET_ACTIVE_PANEL", panel: "settings" }) },
             { icon: Sparkles, label: "变声", color: "bg-purple/10 text-purple", action: () => dispatch({ type: "SET_ACTIVE_PANEL", panel: "voice-effect" }) },
