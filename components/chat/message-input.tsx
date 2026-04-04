@@ -44,7 +44,7 @@ export function MessageInput() {
     },
   });
 
-  const isAIMode = /^@ai\s/i.test(text);
+  const isAIMode = /^ai\s/i.test(text);
   const canSend = text.trim().length > 0 || state.pendingFile !== null;
 
   const handleTextChange = (value: string) => {
@@ -67,7 +67,7 @@ export function MessageInput() {
     if (!canSend && !isAIMode) return;
 
     if (isAIMode) {
-      const query = text.replace(/^@ai\s*/i, "").trim();
+      const query = text.replace(/^ai\s*/i, "").trim();
       setText("");
       if (!query) return;
       // Add AI loading message
@@ -334,7 +334,7 @@ export function MessageInput() {
                   handleSend();
                 }
               }}
-              placeholder="加密消息... (@ai 问AI)"
+              placeholder="加密消息... (ai 问AI)"
               autoComplete="off"
               className="h-10 w-full bg-transparent px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
