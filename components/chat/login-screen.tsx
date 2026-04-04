@@ -211,7 +211,9 @@ export function LoginScreen() {
           </button>
           {state.connecting && (
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              首次唤醒约需30秒
+              {process.env.NEXT_PUBLIC_WS_URL
+                ? "正在连接 WebSocket（冷启动可能要 30～90 秒，请稍候）…"
+                : "正在通过 SSE 连接（若长时间无响应，请在 Vercel 配置 NEXT_PUBLIC_WS_URL 指向 wss:// 信令服务）…"}
             </p>
           )}
           {state.connectionError && (

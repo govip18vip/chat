@@ -192,7 +192,12 @@ function reducer(state: ChatState, action: Action): ChatState {
     case "SET_CONNECTED":
       return { ...state, connected: true, connecting: false, myId: action.myId, connectionError: null };
     case "SET_DISCONNECTED":
-      return { ...state, connected: false, connectionError: action.error || null };
+      return {
+        ...state,
+        connected: false,
+        connecting: false,
+        connectionError: action.error ?? null,
+      };
     case "SET_CREDENTIALS":
       return { ...state, myNick: action.myNick, roomKey: action.roomKey, derivedKey: action.derivedKey, roomHash: action.roomHash };
     case "ADD_MESSAGE":
@@ -327,6 +332,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, []);
   const wsRef = useRef<WebSocket | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  /** 是否已收到本次连接的 welcome（用于区分「从未连上」与「断线重连」） */
+  const signalHandshakeOkRef = useRef(false);
+  const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const joinDeadlineRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clientIdRef = useRef<string>("");
   const seenNonces = useRef(new Set<string>());
   const reconTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -336,6 +345,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const isTypingRef = useRef(false);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const clearWelcomeTimer = useCallback(() => {
+    if (welcomeTimerRef.current != null) {
+      clearTimeout(welcomeTimerRef.current);
+      welcomeTimerRef.current = null;
+    }
+  }, []);
+
+  const clearJoinDeadline = useCallback(() => {
+    if (joinDeadlineRef.current != null) {
+      clearTimeout(joinDeadlineRef.current);
+      joinDeadlineRef.current = null;
+    }
+  }, []);
 
   const sysMsg = useCallback((text: string) => {
     dispatch({
@@ -401,6 +424,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (env._sys) {
         const sys = env._sys as string;
         if (sys === "welcome") {
+          signalHandshakeOkRef.current = true;
+          clearWelcomeTimer();
+          clearJoinDeadline();
           clientIdRef.current = env._id as string;
           dispatch({ type: "SET_CONNECTED", myId: env._id as string });
           // Send presence after connected
@@ -560,7 +586,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [sysMsg]
+    [clearJoinDeadline, clearWelcomeTimer, sysMsg]
   );
 
   /* ── Shared: after connect success ── */
@@ -618,25 +644,46 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         wsRef.current = null;
       }
 
+      signalHandshakeOkRef.current = false;
+      clearWelcomeTimer();
+
       const base = process.env.NEXT_PUBLIC_WS_URL!;
       const wsUrl = `${base}?r=${roomHashVal}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        onConnected(derivedKeyVal, roomHashVal);
-        // Ping keepalive
+        welcomeTimerRef.current = setTimeout(() => {
+          welcomeTimerRef.current = null;
+          if (!signalHandshakeOkRef.current && wsRef.current === ws) {
+            try {
+              ws.close();
+            } catch {
+              /* ignore */
+            }
+            dispatch({
+              type: "SET_DISCONNECTED",
+              error:
+                "未收到服务器握手。请确认 NEXT_PUBLIC_WS_URL 为 wss://域名（无末尾 /、无路径），且 Railway 上 server.js 已部署运行。",
+            });
+          }
+        }, 90000);
+
+        void onConnected(derivedKeyVal, roomHashVal);
         clearInterval(pingInterval.current);
         pingInterval.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            try { ws.send(JSON.stringify({ _ping: Date.now() })); } catch {}
+            try {
+              ws.send(JSON.stringify({ _ping: Date.now() }));
+            } catch {
+              /* ignore */
+            }
           }
         }, 20000);
       };
 
       ws.onmessage = (e) => {
         const raw = typeof e.data === "string" ? e.data : "";
-        // The WS server wraps messages in {_data, _from} or {_sys}
         handleSSEMessage(raw);
       };
 
@@ -644,11 +691,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       ws.onclose = () => {
         clearInterval(pingInterval.current);
-        dispatch({ type: "SET_DISCONNECTED" });
-        scheduleReconnect(derivedKeyVal, myNickVal, roomHashVal);
+        clearWelcomeTimer();
+        if (!signalHandshakeOkRef.current) {
+          clearJoinDeadline();
+          if (stateRef.current.screen === "login") {
+            dispatch({
+              type: "SET_DISCONNECTED",
+              error:
+                "无法连接信令服务器。请在 Vercel 配置 NEXT_PUBLIC_WS_URL=wss://你的 Railway 域名（示例：wss://xxx.up.railway.app），保存后重新部署前端。",
+            });
+          } else {
+            dispatch({ type: "SET_DISCONNECTED" });
+            scheduleReconnect(derivedKeyVal, myNickVal, roomHashVal);
+          }
+        } else {
+          signalHandshakeOkRef.current = false;
+          dispatch({ type: "SET_DISCONNECTED" });
+          scheduleReconnect(derivedKeyVal, myNickVal, roomHashVal);
+        }
       };
     },
-    [handleSSEMessage, onConnected, scheduleReconnect]
+    [clearJoinDeadline, clearWelcomeTimer, dispatch, handleSSEMessage, onConnected, scheduleReconnect]
   );
 
   /* ── SSE connect (Vercel serverless fallback) ── */
@@ -659,6 +722,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         eventSourceRef.current = null;
       }
 
+      signalHandshakeOkRef.current = false;
+      clearWelcomeTimer();
+
       const sseUrl = `/api/room?r=${roomHashVal}`;
       const es = new EventSource(sseUrl);
       eventSourceRef.current = es;
@@ -667,9 +733,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         handleSSEMessage(e.data);
       };
 
-      es.onopen = async () => {
-        await onConnected(derivedKeyVal, roomHashVal);
-        // SSE ping via POST
+      es.onopen = () => {
+        welcomeTimerRef.current = setTimeout(() => {
+          welcomeTimerRef.current = null;
+          if (!signalHandshakeOkRef.current && eventSourceRef.current === es) {
+            es.close();
+            dispatch({
+              type: "SET_DISCONNECTED",
+              error: "SSE 未收到握手。请确认 /api/room 可访问，或改用 WebSocket（配置 NEXT_PUBLIC_WS_URL）。",
+            });
+          }
+        }, 90000);
+
+        void onConnected(derivedKeyVal, roomHashVal);
         clearInterval(pingInterval.current);
         pingInterval.current = setInterval(() => {
           if (stateRef.current.connected && clientIdRef.current) {
@@ -688,11 +764,31 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       es.onerror = () => {
         clearInterval(pingInterval.current);
-        dispatch({ type: "SET_DISCONNECTED" });
-        scheduleReconnect(derivedKeyVal, myNickVal, roomHashVal);
+        clearWelcomeTimer();
+        if (!signalHandshakeOkRef.current) {
+          clearJoinDeadline();
+          try {
+            es.close();
+          } catch {
+            /* ignore */
+          }
+          if (stateRef.current.screen === "login") {
+            dispatch({
+              type: "SET_DISCONNECTED",
+              error: "无法连接聊天服务（SSE）。请刷新重试；若部署在 Vercel 多实例，建议配置 NEXT_PUBLIC_WS_URL 使用 Railway WebSocket。",
+            });
+          } else {
+            dispatch({ type: "SET_DISCONNECTED" });
+            scheduleReconnect(derivedKeyVal, myNickVal, roomHashVal);
+          }
+        } else {
+          signalHandshakeOkRef.current = false;
+          dispatch({ type: "SET_DISCONNECTED" });
+          scheduleReconnect(derivedKeyVal, myNickVal, roomHashVal);
+        }
       };
     },
-    [handleSSEMessage, onConnected, scheduleReconnect]
+    [clearJoinDeadline, clearWelcomeTimer, dispatch, handleSSEMessage, onConnected, scheduleReconnect]
   );
 
   /* ── Unified connect entry point ── */
@@ -723,14 +819,38 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         roomHash: rh,
       });
       dispatch({ type: "SET_CONNECTING", connecting: true });
-      // Use setTimeout to ensure state is updated before connecting
+      clearJoinDeadline();
+      joinDeadlineRef.current = setTimeout(() => {
+        joinDeadlineRef.current = null;
+        const st = stateRef.current;
+        if (st.screen === "login" && st.connecting) {
+          try {
+            wsRef.current?.close();
+          } catch {
+            /* ignore */
+          }
+          try {
+            eventSourceRef.current?.close();
+          } catch {
+            /* ignore */
+          }
+          dispatch({
+            type: "SET_DISCONNECTED",
+            error:
+              "连接超时（2 分钟）。冷启动请稍后再试；并请核对：1) Vercel 已设置并重新部署 NEXT_PUBLIC_WS_URL=wss://…  2) Railway 服务已在线。",
+          });
+        }
+      }, 120000);
       setTimeout(() => connect(dk, cleanNick, rh), 0);
     },
-    [connect]
+    [clearJoinDeadline, connect, dispatch]
   );
 
   const exitRoom = useCallback(() => {
     groupCallBridgeRef.current?.reset();
+    clearWelcomeTimer();
+    clearJoinDeadline();
+    signalHandshakeOkRef.current = false;
     clearTimeout(reconTimer.current);
     clearInterval(pingInterval.current);
     clearTimeout(typingTimer.current);
@@ -750,7 +870,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     seenNonces.current.clear();
     closeDB();
     dispatch({ type: "RESET" });
-  }, []);
+  }, [clearJoinDeadline, clearWelcomeTimer, dispatch]);
 
   const sendMessage = useCallback(
     (text: string) => {
