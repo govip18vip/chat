@@ -204,7 +204,7 @@ function reducer(state: ChatState, action: Action): ChatState {
       return {
         ...state,
         messages: state.messages.map((m) =>
-          m.id === action.id ? { ...m, ...action.updates } : m
+          m.id === action.id ? ({ ...m, ...action.updates } as DisplayMessage) : m
         ),
       };
     case "CLEAR_MESSAGES":
@@ -317,10 +317,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const clientIdRef = useRef<string>("");
   const seenNonces = useRef(new Set<string>());
-  const reconTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const reconCount = useRef(0);
-  const pingInterval = useRef<ReturnType<typeof setInterval>>();
-  const typingTimer = useRef<ReturnType<typeof setTimeout>>();
+  const pingInterval = useRef<ReturnType<typeof setInterval>>(undefined);
+  const typingTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTypingRef = useRef(false);
   const stateRef = useRef(state);
   stateRef.current = state;

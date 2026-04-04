@@ -28,7 +28,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const [showReactions, setShowReactions] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [destroying, setDestroying] = useState(false);
-  const longPressRef = useRef<ReturnType<typeof setTimeout>>();
+  const longPressRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const rowRef = useRef<HTMLDivElement>(null);
 
   const isMe = message.isMe;

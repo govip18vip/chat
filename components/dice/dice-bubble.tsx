@@ -24,7 +24,7 @@ interface DiceBubbleProps {
 export function DiceBubble({ value, msgId, isMe, nick }: DiceBubbleProps) {
   const { sysMsg } = useChatContext();
   const [revealed, setRevealed] = useState(false);
-  const longPressRef = useRef<ReturnType<typeof setTimeout>>();
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const DiceIcon = DICE_ICONS[value - 1] || Dice1;
 
   const handleReveal = useCallback(() => {

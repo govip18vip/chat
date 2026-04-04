@@ -39,7 +39,7 @@ export function CallOverlay({
   const [connecting, setConnecting] = useState(true);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   // Simulate connection after 2s
   useEffect(() => {

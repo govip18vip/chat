@@ -18,7 +18,7 @@ export function VoicePlayer({ file, msgId }: VoicePlayerProps) {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(file.durationHint || 0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const rafRef = useRef<number>();
+  const rafRef = useRef<number | undefined>(undefined);
 
   // Generate pseudo-random bar heights based on filename
   const seed = file.name.split("").reduce((a, c) => a + c.charCodeAt(0), 0);

@@ -32,7 +32,7 @@ export function MessageInput() {
   const [activeEmojiTab, setActiveEmojiTab] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isTypingRef = useRef(false);
 
   const { recording, duration, startRecording, stopRecording, cancelRecording } = useVoiceRecorder({
