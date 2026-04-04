@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "start:chat-server": "node server.js"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

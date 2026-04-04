@@ -1,0 +1,14 @@
+# WebSocket 聊天信令服务（server.js）— 与 Vercel 上的 Next 前端配合使用。
+# 在 Railway 项目里关联本仓库后，会自动读取此文件。
+# 文档: https://docs.railway.app/develop/cli/reference#configuration-as-code
+
+[build]
+builder = "NIXPACKS"
+# 不执行 next build，只安装运行 server.js 所需的依赖（含 ws）
+buildCommand = "npm ci --omit=dev"
+
+[deploy]
+startCommand = "node server.js"
+restartPolicyType = "ON_FAILURE"
+healthcheckPath = "/health"
+healthcheckTimeout = 30

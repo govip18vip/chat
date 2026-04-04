@@ -233,9 +233,9 @@ wss.on('connection', (ws, req) => {
 process.on('uncaughtException', e => console.error('[UNCAUGHT]', e));
 process.on('unhandledRejection', e => console.error('[REJECT]', e));
 
-server.listen(PORT, () => {
-  console.log(`✅ GeekChat v8.0 → :${PORT}`);
-  console.log(`   http://localhost:${PORT}`);
+const HOST = process.env.HOST || "0.0.0.0";
+server.listen(PORT, HOST, () => {
+  console.log(`✅ GeekChat v8.0 → http://${HOST}:${PORT}`);
   console.log(`   health: /health  turn: /api/turn`);
 });
 
