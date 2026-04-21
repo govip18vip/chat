@@ -72,9 +72,22 @@ export async function GET(request: Request) {
         lastSeen: Date.now(),
       });
 
-      // Send welcome
-      const welcome = JSON.stringify({ _sys: "welcome", _id: clientId });
+      // Send welcome with list of existing clients
+      const existingClients = Array.from(room.clients.keys()).filter(id => id !== clientId);
+      const welcome = JSON.stringify({ 
+        _sys: "welcome", 
+        _id: clientId,
+        _existingCount: existingClients.length
+      });
       controller.enqueue(`data: ${welcome}\n\n`);
+
+      // Notify existing clients that a new client joined
+      const joinMsg = JSON.stringify({ _sys: "joined", _id: clientId });
+      room.clients.forEach((c, cid) => {
+        if (cid !== clientId) {
+          try { c.controller.enqueue(`data: ${joinMsg}\n\n`); } catch {}
+        }
+      });
 
       // Send recent messages (offline sync)
       const recent = room.messages.slice(-50);

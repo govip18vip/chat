@@ -224,7 +224,10 @@ export function GroupCallManager() {
     async (tid: string, pc: RTCPeerConnection) => {
       const n = (iceRCRef.current[tid] || 0) + 1;
       iceRCRef.current[tid] = n;
+      console.log("[v0] ICE restart attempt", n, "for peer", tid);
       if (n > ICE_MAX_RESTART) {
+        console.log("[v0] ICE restart limit reached, removing peer", tid);
+        sysMsg("网络连接失败，请检查网络后重试");
         removeRemote(tid);
         return;
       }
@@ -233,17 +236,23 @@ export function GroupCallManager() {
         const o = await pc.createOffer({ iceRestart: true });
         await pc.setLocalDescription(o);
         sendRtc(tid, { type: "offer", sdp: o });
-      } catch {
+      } catch (err) {
+        console.log("[v0] ICE restart failed:", err);
+        sysMsg("连接对方失败，请稍后重试");
         removeRemote(tid);
       }
     },
-    [removeRemote, sendRtc]
+    [removeRemote, sendRtc, sysMsg]
   );
   iceRestartRef.current = iceRestart;
 
   const handleRTC = useCallback(
     async (sid: string, sig: Record<string, unknown>) => {
-      if (!inCallRef.current || !localStreamRef.current) return;
+      if (!inCallRef.current || !localStreamRef.current) {
+        console.log("[v0] handleRTC ignored: not in call or no local stream");
+        return;
+      }
+      console.log("[v0] handleRTC from", sid, "type:", sig.type);
       const pc = getPC(sid);
       try {
         if (sig.type === "offer") {
@@ -251,26 +260,33 @@ export function GroupCallManager() {
           if (pc.signalingState === "have-local-offer") {
             const myId = stateRef.current.myId;
             if (myId < sid) {
+              console.log("[v0] Collision: rolling back local offer");
               await pc.setLocalDescription({ type: "rollback" });
-            } else return;
+            } else {
+              console.log("[v0] Collision: ignoring remote offer (we win)");
+              return;
+            }
           }
           await pc.setRemoteDescription(new RTCSessionDescription(sdp));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           sendRtc(sid, { type: "answer", sdp: answer });
+          console.log("[v0] Sent answer to", sid);
         } else if (sig.type === "answer") {
           const sdp = sig.sdp as RTCSessionDescriptionInit;
           if (pc.signalingState === "have-local-offer") {
             await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+            console.log("[v0] Set remote answer from", sid);
           }
         } else if (sig.type === "ice" && sig.candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(sig.candidate as RTCIceCandidateInit));
         }
       } catch (e) {
-        console.warn("RTC:", e);
+        console.warn("[v0] RTC error:", e);
+        sysMsg("连接出现问题，正在尝试重连…");
       }
     },
-    [getPC, sendRtc]
+    [getPC, sendRtc, sysMsg]
   );
 
   const makeOffer = useCallback(
@@ -308,17 +324,16 @@ export function GroupCallManager() {
     async (type: CallKind) => {
       const s = stateRef.current;
       if (!s.connected) {
-        sysMsg("未连接");
+        sysMsg("未连接，请稍后再试");
         return;
       }
-      if (Object.keys(s.members).length === 0) {
-        sysMsg("房间内暂无其他成员，无法发起群通话");
-        return;
-      }
+      // Allow starting call even with 0 members - they may join later
+      // or the invite will be sent when members join
       try {
         await startMedia(type);
-      } catch {
-        sysMsg("无法获取麦克风或摄像头权限");
+      } catch (err) {
+        console.log("[v0] Media access error:", err);
+        sysMsg("无法获取麦克风或摄像头权限，请检查浏览器设置");
         return;
       }
       inCallRef.current = true;
@@ -327,7 +342,12 @@ export function GroupCallManager() {
       dispatch({ type: "SET_CALL", inCall: true, callType: type, isPrivate: false });
       sendEncrypted({ type: "call_invite", nick: s.myNick, callType: type });
       setPhase("outgoing_wait");
-      sysMsg(`已发起${type === "video" ? "群视频" : "群语音"}通话，等待对方接听…`);
+      const memberCount = Object.keys(s.members).length;
+      if (memberCount === 0) {
+        sysMsg(`已发起${type === "video" ? "群视频" : "群语音"}通话，等待其他成员加入房间…`);
+      } else {
+        sysMsg(`已发起${type === "video" ? "群视频" : "群语音"}通话，等待对方接听…`);
+      }
     },
     [dispatch, sendEncrypted, sysMsg]
   );
@@ -354,25 +374,40 @@ export function GroupCallManager() {
     const ct = (p.callType as CallKind) || "audio";
     const privateTo = p.privateTo as string | undefined;
     const isPrivate = !!privateTo && privateTo === stateRef.current.myId;
+    console.log("[v0] Received call invite from:", nick, "type:", ct, "isPrivate:", isPrivate);
     if (inCallRef.current) {
+      console.log("[v0] Already in call, declining");
       sendEncrypted({ type: "call_decline", nick: stateRef.current.myNick });
+      sysMsg(`${nick} 发起了${ct === "video" ? "视频" : "语音"}通话，但您正在通话中`);
       return;
     }
+    sysMsg(`${nick} 发起了${isPrivate ? "私密" : "群"}${ct === "video" ? "视频" : "语音"}通话邀请`);
     setIncoming({ fromId, nick, type: ct, isPrivate });
     setPhase("incoming");
   };
 
   implRef.current.onCallAccept = (fromId) => {
-    if (!inCallRef.current) return;
+    console.log("[v0] Call accepted by", fromId);
+    if (!inCallRef.current) {
+      console.log("[v0] Not in call, ignoring accept");
+      return;
+    }
+    const peerNick = stateRef.current.members[fromId] || "对方";
+    sysMsg(`${peerNick} 已接听`);
     setPhase("active");
-    setConnectingLabel("连接中…");
+    setConnectingLabel("正在建立连接…");
     setTimeout(() => void makeOffer(fromId), 300);
   };
 
   implRef.current.onCallDecline = (fromId) => {
+    console.log("[v0] Call declined by", fromId);
     const name = stateRef.current.members[fromId] || "对方";
     sysMsg(`${name} 拒绝了通话`);
-    if (!Object.keys(pcsRef.current).length) hangupLocal();
+    // If no active peer connections, end the call
+    if (!Object.keys(pcsRef.current).length) {
+      console.log("[v0] No active connections, ending call");
+      hangupLocal();
+    }
   };
 
   implRef.current.onWebRTC = (fromId, p) => {
@@ -384,7 +419,15 @@ export function GroupCallManager() {
   };
 
   implRef.current.onMemberJoined = (sid) => {
-    if (!inCallRef.current || isPrivateRef.current || !localStreamRef.current) return;
+    console.log("[v0] Member joined while in call:", sid);
+    if (!inCallRef.current || isPrivateRef.current || !localStreamRef.current) {
+      console.log("[v0] Not inviting member - not in call or private call");
+      return;
+    }
+    // Send call invite to the new member
+    const s = stateRef.current;
+    sendEncrypted({ type: "call_invite", nick: s.myNick, callType: callTypeRef.current });
+    console.log("[v0] Sent call invite to new member");
     setTimeout(() => void makeOffer(sid), 800);
   };
 
