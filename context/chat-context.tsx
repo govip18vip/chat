@@ -444,6 +444,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             }),
           }).catch(() => {});
         }
+        if (sys === "joined") {
+          // A new client joined the room - they will send presence:join shortly
+          // This helps us know someone is connecting even before presence exchange
+          console.log("[v0] New client joined room:", env._id);
+        }
         if (sys === "left") {
           const leftId = env._id as string;
           if (s.members[leftId]) {
@@ -469,10 +474,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           case "presence": {
             const action = p.action as string;
             if (action === "join" || action === "sync") {
-              dispatch({ type: "ADD_MEMBER", id: sid, nick: p.nick as string });
+              const nickStr = p.nick as string;
+              // Only add if not already in members to avoid duplicates
+              if (!s.members[sid]) {
+                dispatch({ type: "ADD_MEMBER", id: sid, nick: nickStr });
+              }
               if (action === "join") {
-                sysMsg(`${p.nick} 加入了房间`);
-                // Send sync back
+                sysMsg(`${nickStr} 加入了房间`);
+                // Send sync back so the new user knows about us
                 const syncMsg = encrypt(
                   { type: "presence", action: "sync", nick: s.myNick },
                   s.derivedKey
